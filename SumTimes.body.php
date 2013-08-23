@@ -20,9 +20,10 @@ class SumTimes
 {
 
 	/**
-	 * @help: This is the method[1] called when 
+	 * @help: "setup" is the method called when MediaWiki reaches the 
+	 * "ParserFirstCallInit" hook. 
 	 *
-	 * [1] a method is what you call a function that is part of a class. A class
+	 * A method is what you call a function that is part of a class. A class
 	 * is the definition of an object. So you create a class, then in code you
 	 * create instances of that class...those instances are called objects.
 	 *
@@ -86,7 +87,8 @@ class SumTimes
 				SFH_OBJECT_ARGS 
 			);
 
-		// SFH_OBJECT_ARGS not defined
+		// SFH_OBJECT_ARGS not defined. Basically the same as above, with a different
+		// method used instead
 		} else {
 			
 			$parser->setFunctionHook(
@@ -102,162 +104,64 @@ class SumTimes
 		
 	}
 
-
 	/**
+	 *	@param &$parser : reference to the $parser object.
+	 *  @param $timeString : list of times, separated by commas. Another parameter
+	 *		could be added to change what the separator is.
+	 *  @param $format : Used to specify what format the time strings are in. So
+	 *		whether they are hour:minute or minute:second. For now I'd just leave
+	 *		this out of the function and focus on the hour:minute version
 	 *
-	 *
-	 *	I HAVEN'T GOTTEN HERE YET...
-	 *
-	 *
+	 *	Basically this method just passes the data to the doTimeAddition() method
 	 **/
-
-
-
-	static function renderCopyWatchersNonObj (&$parser, $pagesToCopyWatchers='', $showOutput=false) {
+	static function renderSumTimesNonObj (&$parser, $timeString='', $format=false) {
 		
-		$pagesToCopyWatchers = explode(',', $pagesToCopyWatchers);
-		
-		if ( $showOutput == 'true' )
-			$showOutput = true;
-		
-		return self::renderCopyWatchers( $parser, $pagesToCopyWatchers, $showOutput );
+		// break apart the time string on commas
+		$timeArray = explode(',', $timeString);
+				
+		return self::doTimeAddition( $parser, $pagesToCopyWatchers, $format );
 		
 	}
 	
-	static function renderCopyWatchersObj ( &$parser, $frame, $args ) {
+	/**
+	 *	Similar to the above method, but varied for the "SFH_OBJECT_ARGS" version.
+	 *	Again, this basically just passes the data on to the doTimeAddition() method.
+	 **/
+	static function renderSumTimesObj ( &$parser, $frame, $args ) {
 		
-		$pagesToCopyWatchers = explode(',', $frame->expand( $args[0] ) );
+		// I have no idea why $frame->expand( $args[0] ) is better than the other version
+		// I'm guessing it gives you more control over the data somehow.
+		$timeArray = explode(',', $frame->expand( $args[0] ) );
 	
-		if ( isset( $args[1] ) && trim( $frame->expand( $args[1] ) ) == 'true' )
-			$showOutput = true;
+
+		if ( isset( $args[1] ) )
+			$format = trim( $frame->expand( $args[1] ) );
 		else
-			$showOutput = false;
+			$format = false;
 	
-		return self::renderCopyWatchers( $parser, $pagesToCopyWatchers, $showOutput );
+		return self::doTimeAddition( $parser, $pagesToCopyWatchers, $format );
 	
 	}
 	
-	static function renderCopyWatchers ( &$parser, $pagesToCopyArray, $showOutput ) {
-		global $wgCanonicalNamespaceNames;
-
-		$newWatchers = array();
-		
-		$output = "Copied watchers from:\n\n";
-		
-		foreach( $pagesToCopyArray as $page ) {
-			
-			$output .= "* $page";
-
-			// returns Title object
-			$titleObj = self::getNamespaceAndTitle( trim($page) );
-			
-			if ( $titleObj->isRedirect() ) {
-				$redirectArticle = new Article( $titleObj );
+	/**
+	 *	Here's where you'll do your math
+	 **/
+	static function doTimeAddition ( &$parser, $times, $format ) {
 				
-				// FIXME: thought newFromRedirectRecurse() would find the ultimate page
-				// but it doesn't appear to be doing that
-				$titleObj = Title::newFromRedirectRecurse( $redirectArticle->getContent() );
-				$output .= " (redirects to " . $titleObj->getFullText() . ")";
-				
-				// FIXME: Do this for MW 1.19+ ???
-				// $wp = new WikiPage( $titleObj );
-				// $titleObj = $wp->followRedirect();
-				
-				// FIXME: Do one of these for MW 1.21+ ???
-				// WikiPage::followRedirect()
-				// Content::getUltimateRedirectTarget()
-
-			}
+		foreach( $times as $time ) {
 			
-			$ns_num = $titleObj->getNamespace();
-			$title  = $titleObj->getDBkey();			
+			$t = explode(":", $time);
+			$hour = $t[0];
+			$min  = $t[1];
 
-			unset( $titleObj ); // prob not necessary since it will be reset shortly.
-			
-			$watchers = self::getPageWatchers( $ns_num, $title );
-			$num_watchers = count($watchers);
-			
-			if ($num_watchers == 1)
-				$output .= " (" . count($watchers) . " watcher)\n";
-			else
-				$output .= " (" . count($watchers) . " watchers)\n";
+			// add hours and minutes and such
 
-			foreach ( $watchers as $userID => $dummy ) {
-				$newWatchers[$userID] = 0; // only care about $userID, and want unique.
-			}
+			// I'm not sure how much you'll need to handle cases of 05:07 versus 5:07
 
 		}
 		
-		// add list of usernames as watchers to this Title
-		foreach ($newWatchers as $userID => $dummy) {
-			$u = User::newFromId($userID);
-			$u->addWatch( $parser->getTitle() );
-		}
-		
-		if ( $showOutput )
-			return $output;
-		else
-			return "";
-			
+		return $output;
+
 	}
 	
-	static function getNamespaceAndTitle ( $pageName ) {
-	
-		// defaults
-		$ns_num = NS_MAIN;
-		$title = $pageName;
-
-		$colonPosition = strpos( $pageName, ':' ); // location of colon if exists
-		
-		// this won't test for a leading colon...but shouldn't use parser function that way anyway...
-		if ( $colonPosition ) {
-			$test_ns = self::getNamespaceNumber( 
-				substr( $pageName, 0, $colonPosition )
-			);
-			
-			// only reset $ns and $title if has colon, and pre-colon text actually is a namespace
-			if ( $test_ns !== false ) {
-				$ns_num = $test_ns;
-				$title = substr( $pageName, $colonPosition+1 );
-			}
-		}
-		
-		return Title::makeTitle( $ns_num, $title );
-		//return (object)array("ns_num"=>$ns_num, "title"=>$title);
-	
-	}
-	
-	// returns number of namespace (can be zero) or false. Use ===.
-	static function getNamespaceNumber ( $ns ) {
-		global $wgCanonicalNamespaceNames;
-		
-		foreach ( $wgCanonicalNamespaceNames as $i => $text ) {
-			if (preg_match("/$ns/i", $text)) {
-				return $i;
-			}
-		}
-	
-		return false; // if $ns not found above, does not exist
-	}
-	
-	static function getPageWatchers ($ns, $title) {
-		
-		// code adapted from Extension:WhoIsWatching
-		$dbr = wfGetDB( DB_SLAVE );
-		$watchingUserIDs = array();
-		
-		
-		$res = $dbr->select(
-			'watchlist',
-			'wl_user', 
-			array('wl_namespace'=>$ns, 'wl_title'=>$title),
-			__METHOD__
-		);
-		foreach ( $res as $row ) {
-			$watchingUserIDs[ $row->wl_user ] = 0; // only care about the user ID, and want unique
-		}
-
-		return $watchingUserIDs;
-			
-	}
 }
